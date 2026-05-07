@@ -316,15 +316,33 @@ export default function App() {
       return;
     }
 
+    // --- AUTOMATIC DUPLICATE CHECKER ---
+    const isDuplicate = records.some(r => 
+      r.form.pcrNo === formData.pcrNo && 
+      (!isEditing || r.id !== currentRecord?.id)
+    );
+
+    let finalFormData = formData;
+    if (isDuplicate) {
+      const nextSuggested = generateNextPcrNo(records);
+      const confirmMsg = `⚠️ DUPLICATE DETECTED: PCR No. "${formData.pcrNo}" is already used by another record.\n\nTo avoid errors, would you like to automatically switch to the next available number: "${nextSuggested}"?\n\n- Click OK to use "${nextSuggested}"\n- Click CANCEL to save with the duplicate number anyway.`;
+      
+      if (window.confirm(confirmMsg)) {
+        finalFormData = { ...formData, pcrNo: nextSuggested };
+        setFormData(finalFormData); // Update the form UI
+      }
+    }
+
     setLoading(true);
+    const saveToProcess = finalFormData; // Use the (possibly updated) data for the actual save
 
     try {
       let saved: PCRRecord | undefined;
       if (isEditing && currentRecord) {
-        saved = await updateRecord(currentRecord.id, formData);
+        saved = await updateRecord(currentRecord.id, saveToProcess);
         showToast("Record updated successfully", "success");
       } else {
-        saved = await addRecord(formData);
+        saved = await addRecord(saveToProcess);
         showToast("Record saved successfully", "success");
       }
 

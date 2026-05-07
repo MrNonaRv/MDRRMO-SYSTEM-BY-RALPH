@@ -273,7 +273,9 @@ export const RecordsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const duplicateGroups: PCRRecord[][] = [];
 
     records.forEach(record => {
-      const key = `${record.form.pcrNo}|${record.form.patientName}|${record.form.date}|${record.form.timeOfDay}`.toLowerCase();
+      // We use a combination of Name, Date, Gender, and Age as a unique fingerprint
+      // This catches duplicates even if they have different PCR numbers
+      const key = `${record.form.patientName}|${record.form.date}|${record.form.gender}|${record.form.age}`.toLowerCase().trim();
       if (seen.has(key)) {
         seen.get(key)!.push(record);
       } else {
@@ -294,15 +296,26 @@ export const RecordsProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const duplicateGroups = checkDuplicates();
     if (duplicateGroups.length === 0) return { success: true, count: 0 };
 
-    const idsToRemove = new Set<string>();
+    const idsToRemove: string[] = [];
     duplicateGroups.forEach(group => {
-      group.slice(1).forEach(record => idsToRemove.add(record.id));
+      // Keep the first one, delete the rest
+      group.slice(1).forEach(record => idsToRemove.push(record.id));
     });
 
     setLoading(true);
-    setRecords(prev => prev.filter(r => !idsToRemove.has(r.id)));
-    setLoading(false);
-    return { success: true, count: idsToRemove.size };
+    try {
+      const batch = writeBatch(db);
+      idsToRemove.forEach(id => {
+        batch.delete(doc(db, "records", id));
+      });
+      await batch.commit();
+      setLoading(false);
+      return { success: true, count: idsToRemove.length };
+    } catch (error) {
+      console.error("Error removing duplicates from Firestore:", error);
+      setLoading(false);
+      return { success: false, count: 0 };
+    }
   }, [checkDuplicates]);
 
   const value = useMemo(() => ({
